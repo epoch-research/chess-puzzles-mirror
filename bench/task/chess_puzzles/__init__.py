@@ -50,7 +50,7 @@ def model_extracted_exact_match():
 
         extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
 
-        def submit(answer: string | None):
+        def submit(answer: str | None):
             pass
 
         submission_tool = ToolDef(
