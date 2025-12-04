@@ -50,7 +50,7 @@ def model_extracted_exact_match():
 
         extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
 
-        def submit(answer: float | None):
+        def submit(answer: string | None):
             pass
 
         submission_tool = ToolDef(
@@ -77,7 +77,6 @@ def model_extracted_exact_match():
                 explanation="No clear answer was given",
             )
 
-        # Convert the target to an int (and not the answer to a string) since it might be 0-prefixed.
         is_correct = extracted_answer == target.text
         explanation = (
             f"The model answered {extracted_answer}, which is correct."
