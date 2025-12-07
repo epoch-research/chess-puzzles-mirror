@@ -17,7 +17,7 @@ from inspect_ai.tool import ToolDef, ToolFunction
 
 from bench.model import default_grader_model
 
-SOLUTION_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed in algebraic notation, using the format "MOVE: Nxg4+" (without quotes).
+SOLUTION_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
 
 {prompt}
 
@@ -27,7 +27,7 @@ EXTRACTION_PROMPT_TEMPLATE = """**Task: Extract a student's answer to a single-m
 
 Instructions:
 - Read the student's entire solution carefully to identify their final answer.
-- The student is supposed to have concluded their solution with "MOVE: [answer]" where [answer] is given in algebraic notation.
+- The student is supposed to have concluded their solution with "MOVE: [answer]" where [answer] is given as a four-character string stating the starting and ending square of the piece to be moved, e.g. b1c3.
 - If the solution appears in that format, extract the move and submit it as the final answer.
 - Otherwise, do your best to identify the final answer.
 - Use the tool provided to submit the extracted answer.
