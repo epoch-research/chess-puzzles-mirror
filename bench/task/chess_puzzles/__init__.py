@@ -1,23 +1,14 @@
 from typing import Dict, Any
 
 from inspect_ai import Task, task, Epochs
-from inspect_ai.dataset import Sample, csv_dataset
-from inspect_ai.scorer import scorer, Score, Target, CORRECT, INCORRECT, accuracy, stderr
-from inspect_ai.solver import generate, prompt_template, TaskState
-
-from bench.model import default_grader_model
-
-from typing import Dict, Any
-
-from inspect_ai import Task, task, Epochs
 from inspect_ai.dataset import Sample, hf_dataset
-from inspect_ai.scorer import scorer, Score, Target, CORRECT, INCORRECT, accuracy, stderr
+from inspect_ai.scorer import scorer, Score, Target, CORRECT, INCORRECT, NOANSWER, accuracy, stderr
 from inspect_ai.solver import generate, prompt_template, TaskState
 from inspect_ai.tool import ToolDef, ToolFunction
 
 from bench.model import default_grader_model
 
-SOLUTION_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
+SOLUTION_PROMPT_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
 
 {prompt}
 
@@ -73,7 +64,7 @@ def model_extracted_exact_match():
 
         if extracted_answer is None:
             return Score(
-                value=INCORRECT,
+                value=NOANSWER,
                 explanation="No clear answer was given",
             )
 
@@ -96,7 +87,7 @@ def model_extracted_exact_match():
 def chess_puzzles(epochs: int = 1) -> Task:
     dataset = csv_dataset("bench/task/chess_puzzles/puzzles.csv")
 
-    plan = [prompt_template(SOLUTION_TEMPLATE), generate()]
+    plan = [prompt_template(SOLUTION_PROMPT_TEMPLATE), generate()]
 
     reducers = ["mean"]
 
