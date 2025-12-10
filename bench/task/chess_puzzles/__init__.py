@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
 from inspect_ai import Task, task, Epochs
-from inspect_ai.dataset import Sample, hf_dataset
+from inspect_ai.dataset import Sample, csv_dataset
 from inspect_ai.scorer import scorer, Score, Target, CORRECT, INCORRECT, NOANSWER, accuracy, stderr
 from inspect_ai.solver import generate, prompt_template, TaskState
 from inspect_ai.tool import ToolDef, ToolFunction
