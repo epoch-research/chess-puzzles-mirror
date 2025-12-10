@@ -2,7 +2,16 @@ from typing import Dict, Any
 
 from inspect_ai import Task, task, Epochs
 from inspect_ai.dataset import Sample, csv_dataset
-from inspect_ai.scorer import scorer, Score, Target, CORRECT, INCORRECT, NOANSWER, accuracy, stderr
+from inspect_ai.scorer import (
+    scorer,
+    Score,
+    Target,
+    CORRECT,
+    INCORRECT,
+    NOANSWER,
+    accuracy,
+    stderr,
+)
 from inspect_ai.solver import generate, prompt_template, TaskState
 from inspect_ai.tool import ToolDef, ToolFunction
 
@@ -39,7 +48,9 @@ def model_extracted_exact_match():
     async def score(state: TaskState, target: Target) -> Score:
         student_solution = state.output.completion
 
-        extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
+        extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(
+            student_solution=student_solution
+        )
 
         def submit(answer: str | None):
             pass
@@ -51,7 +62,9 @@ def model_extracted_exact_match():
             parameters={"answer": "The answer"},
         )
         extraction_output = await default_grader_model().generate(
-            extraction_prompt, tools=[submission_tool], tool_choice=ToolFunction(name="submit")
+            extraction_prompt,
+            tools=[submission_tool],
+            tool_choice=ToolFunction(name="submit"),
         )
 
         if (
@@ -82,6 +95,7 @@ def model_extracted_exact_match():
         )
 
     return score
+
 
 @task(name="Chess Puzzles")
 def chess_puzzles(epochs: int = 1) -> Task:
