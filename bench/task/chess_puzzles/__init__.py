@@ -48,9 +48,7 @@ def model_extracted_exact_match():
     async def score(state: TaskState, target: Target) -> Score:
         student_solution = state.output.completion
 
-        extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(
-            student_solution=student_solution
-        )
+        extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
 
         def submit(answer: str | None):
             pass
