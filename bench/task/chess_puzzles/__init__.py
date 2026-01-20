@@ -109,7 +109,7 @@ def chess_puzzles(epochs: int = 1) -> Task:
         scorer=model_extracted_exact_match(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.0.0",
+            "epochai-benchmark-version": "1.0.1",
             "inspect-log-public": True,
         },
     )
