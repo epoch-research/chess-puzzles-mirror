@@ -73,7 +73,7 @@ def model_extracted_exact_match():
 
         extracted_answer = extraction_output.message.tool_calls[0].arguments["answer"]
 
-        if extracted_answer is None:
+        if extracted_answer is None or extracted_answer == "None":
             return Score(
                 value=NOANSWER,
                 explanation="No clear answer was given",
@@ -109,7 +109,7 @@ def chess_puzzles(epochs: int = 1) -> Task:
         scorer=model_extracted_exact_match(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.0.2",
+            "epochai-benchmark-version": "1.1.0",
             "inspect-log-public": True,
         },
     )
