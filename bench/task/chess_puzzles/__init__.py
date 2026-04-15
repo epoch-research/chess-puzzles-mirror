@@ -13,9 +13,9 @@ from inspect_ai.scorer import (
     stderr,
 )
 from inspect_ai.solver import generate, prompt_template, TaskState
-from inspect_ai.tool import ToolDef, ToolFunction
 
 from bench.model import default_grader_model
+from bench.task.model_extracted_answer import answer_submission_tool, extract_model_answer
 
 SOLUTION_PROMPT_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
 
@@ -50,28 +50,11 @@ def model_extracted_exact_match():
 
         extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
 
-        def submit(answer: str | None):
-            pass
-
-        submission_tool = ToolDef(
-            tool=submit,
-            name="submit",
-            description="Submit the answer",
-            parameters={"answer": "The answer"},
+        extracted_answer = await extract_model_answer(
+            grader_model=default_grader_model(),
+            extraction_prompt=extraction_prompt,
+            submission_tool=answer_submission_tool(),
         )
-        extraction_output = await default_grader_model().generate(
-            extraction_prompt,
-            tools=[submission_tool],
-            tool_choice=ToolFunction(name="submit"),
-        )
-
-        if (
-            not extraction_output.message.tool_calls
-            or "answer" not in extraction_output.message.tool_calls[0].arguments
-        ):
-            raise RuntimeError("Grader model did not correctly extract an answer")
-
-        extracted_answer = extraction_output.message.tool_calls[0].arguments["answer"]
 
         if extracted_answer is None:
             return Score(
