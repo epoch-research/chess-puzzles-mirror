@@ -1,13 +1,10 @@
-from typing import Any
+from typing import Any, Callable
 
 from inspect_ai.model import Model
 from inspect_ai.tool import ToolDef, ToolFunction
 
 
-def answer_submission_tool() -> ToolDef:
-    def submit(answer: Any | None) -> None:
-        pass
-
+def answer_submission_tool(submit: Callable[..., Any]) -> ToolDef:
     return ToolDef(
         tool=submit,
         name="submit",
