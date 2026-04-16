@@ -50,13 +50,16 @@ def model_extracted_exact_match():
 
         extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
 
+        def submit(answer: str | None):
+            pass
+
         extracted_answer = await extract_model_answer(
             grader_model=default_grader_model(),
             extraction_prompt=extraction_prompt,
-            submission_tool=answer_submission_tool(),
+            submission_tool=answer_submission_tool(submit),
         )
 
-        if extracted_answer is None or extracted_answer == "None":
+        if extracted_answer is None:
             return Score(
                 value=NOANSWER,
                 explanation="No clear answer was given",
@@ -92,7 +95,7 @@ def chess_puzzles(epochs: int = 1) -> Task:
         scorer=model_extracted_exact_match(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.1.1",
+            "epochai-benchmark-version": "1.0.1",
             "inspect-log-public": True,
         },
     )
