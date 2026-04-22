@@ -10,11 +10,13 @@ from inspect_ai.scorer import (
     INCORRECT,
     NOANSWER,
     accuracy,
+    exact,
     stderr,
 )
 from inspect_ai.solver import generate, prompt_template, TaskState
 
 from bench.model import default_grader_model
+from bench.solver.qa_agent import qa_agent
 from bench.task.model_extracted_answer import answer_submission_tool, extract_model_answer
 
 SOLUTION_PROMPT_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
@@ -96,6 +98,44 @@ def chess_puzzles(epochs: int = 1) -> Task:
         epochs=Epochs(epochs, reducers),
         metadata={
             "epochai-benchmark-version": "1.0.1",
+            "inspect-log-public": True,
+        },
+    )
+
+
+AGENT_QUESTION_TEMPLATE = """Below is a FEN string representing the state of a chess game. \
+Analyze the position and determine the best next move for the player whose turn it is.
+
+{prompt}
+"""
+
+AGENT_SUBMIT_DESCRIPTION = (
+    "Submit the best next move as a four-character string stating the starting and ending "
+    "squares of the piece to be moved, e.g. b1c3."
+)
+
+
+@task(name="Chess Puzzles (Agent)")
+def chess_puzzles_agent(epochs: int = 1, max_output_tokens: int = 16_000) -> Task:
+    dataset = csv_dataset("bench/task/chess_puzzles/puzzles.csv")
+
+    plan = [
+        prompt_template(AGENT_QUESTION_TEMPLATE),
+        qa_agent(
+            max_output_tokens=max_output_tokens,
+            submit_description=AGENT_SUBMIT_DESCRIPTION,
+        ),
+    ]
+
+    reducers = ["mean"]
+
+    return Task(
+        dataset=dataset,
+        plan=plan,
+        scorer=exact(),
+        epochs=Epochs(epochs, reducers),
+        metadata={
+            "epochai-benchmark-version": "1.0.0",
             "inspect-log-public": True,
         },
     )
