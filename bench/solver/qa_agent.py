@@ -4,6 +4,7 @@ import math
 
 from inspect_ai.log._transcript import transcript
 from inspect_ai.model import (
+    ChatMessage,
     ChatMessageTool,
     ChatMessageUser,
     execute_tools,
@@ -41,7 +42,7 @@ def submit_answer() -> Tool:
     return execute
 
 
-def _extract_submission(tool_results: list[ChatMessageTool]) -> str | None:
+def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
     for result in tool_results:
         if isinstance(result, ChatMessageTool) and result.function == SUBMIT_NAME:
             return result.text
@@ -125,7 +126,6 @@ def qa_agent(
 
             message = f"You have used {output_tokens_used:,}/{max_output_tokens:,} output tokens."
             state.messages.append(ChatMessageUser(content=message))
-
 
         return state
 
