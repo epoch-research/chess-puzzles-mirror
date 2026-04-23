@@ -103,20 +103,22 @@ def chess_puzzles(epochs: int = 1) -> Task:
     )
 
 
-AGENT_QUESTION_TEMPLATE = """Below is a FEN string representing the state of a chess game. \
-Analyze the position and determine the best next move for the player whose turn it is.
+AGENT_QUESTION_TEMPLATE = (
+    "Below is a FEN string representing the state of a chess game. Analyze the position and "
+    "determine the best next move for the player whose turn it is.\n"
+    "\n"
+    "{prompt}"
+)
 
-{prompt}
-"""
 
 AGENT_SUBMIT_DESCRIPTION = (
-    "Submit the best next move as a four-character string stating the starting and ending "
-    "squares of the piece to be moved, e.g. b1c3."
+    "Submit the best next move as a four-character string stating the starting and ending squares "
+    "of the piece to be moved, e.g. b1c3. The conversation will end immediately."
 )
 
 
 @task(name="Chess Puzzles (Agent)")
-def chess_puzzles_agent(epochs: int = 1, max_output_tokens: int = 16_000) -> Task:
+def chess_puzzles_agent(*, epochs: int = 1, max_output_tokens: int) -> Task:
     dataset = csv_dataset("bench/task/chess_puzzles/puzzles.csv")
 
     plan = [
