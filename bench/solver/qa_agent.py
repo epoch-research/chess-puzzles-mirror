@@ -1,5 +1,7 @@
 """Agentic scaffold for non-agentic QA-style evals."""
 
+import math
+
 from inspect_ai.log._transcript import transcript
 from inspect_ai.model import (
     ChatMessageTool,
@@ -76,9 +78,20 @@ def qa_agent(
             submit_tool = tool_with(submit_tool, description=submit_description)
         state.tools = [think(), submit_tool]
 
+        # Doom loop protection: the model should be spending many tokens per turn if it's actually
+        # thinking. Cut it off at budget/2000 turns because it's probably stuck repeatedly
+        # outputting a small number of tokens per turn (and racking up input tokens).
+        max_turns = math.ceil(max_output_tokens / 2_000)
+
         output_tokens_used = 0
+        turns = 0
 
         while not state.completed:
+            if turns >= max_turns:
+                transcript().info(f"qa_agent: terminated — reached turn cap of {max_turns}")
+                break
+            turns += 1
+
             state.output = await get_model().generate(input=state.messages, tools=state.tools)
             state.messages.append(state.output.message)
 
@@ -106,7 +119,7 @@ def qa_agent(
             remaining = max_output_tokens - output_tokens_used
             if remaining <= 0:
                 transcript().info(
-                    f"qa_agent: output-token budget of {max_output_tokens:,} exhausted"
+                    f"qa_agent: output token budget of {max_output_tokens:,} exhausted"
                 )
                 break
 
