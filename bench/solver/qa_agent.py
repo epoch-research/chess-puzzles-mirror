@@ -7,13 +7,19 @@ from inspect_ai.model import (
     ChatMessage,
     ChatMessageTool,
     ChatMessageUser,
+    CompactionNative,
+    CompactionSummary,
+    Model,
+    compaction,
     execute_tools,
     get_model,
 )
+from inspect_ai.model._compaction.types import CompactionStrategy
 from inspect_ai.solver import Generate, Solver, TaskState, solver
 from inspect_ai.tool import Tool, think, tool, tool_with
 
 SUBMIT_NAME = "submit_answer"
+COMPACTION_THRESHOLD_TOKENS = 100_000
 
 PROMPT_TEMPLATE = (
     "Please answer the question below. Work through the problem carefully and then submit your "
@@ -49,6 +55,13 @@ def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
     return None
 
 
+def _pick_compaction_strategy(model: Model) -> CompactionStrategy:
+    """Native compaction for OpenAI; summary compaction for everyone else."""
+    if type(model.api).__name__ == "OpenAIAPI":
+        return CompactionNative(threshold=COMPACTION_THRESHOLD_TOKENS)
+    return CompactionSummary(threshold=COMPACTION_THRESHOLD_TOKENS)
+
+
 @solver
 def qa_agent(
     *,
@@ -79,6 +92,14 @@ def qa_agent(
             submit_tool = tool_with(submit_tool, description=submit_description)
         state.tools = [think(), submit_tool]
 
+        model = get_model()
+        compact = compaction(
+            strategy=_pick_compaction_strategy(model),
+            prefix=state.messages[:],
+            tools=state.tools,
+            model=model,
+        )
+
         # Doom loop protection: the model should be spending many tokens per turn if it's actually
         # thinking. Cut it off at budget/2000 turns because it's probably stuck repeatedly
         # outputting a small number of tokens per turn (and racking up input tokens).
@@ -93,7 +114,11 @@ def qa_agent(
                 break
             turns += 1
 
-            state.output = await get_model().generate(input=state.messages, tools=state.tools)
+            input_messages, supplemental = await compact(state.messages)
+            if supplemental is not None:
+                state.messages.append(supplemental)
+
+            state.output = await model.generate(input=input_messages, tools=state.tools)
             state.messages.append(state.output.message)
 
             if state.output.usage is not None:
