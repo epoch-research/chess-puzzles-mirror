@@ -114,11 +114,12 @@ def qa_agent(
                 break
             turns += 1
 
-            input_messages, supplemental = await compact(state.messages)
+            input_messages, supplemental = await compact.compact_input(state.messages)
             if supplemental is not None:
                 state.messages.append(supplemental)
 
             state.output = await model.generate(input=input_messages, tools=state.tools)
+            compact.record_output(state.output)
             state.messages.append(state.output.message)
 
             if state.output.usage is not None:
