@@ -117,6 +117,16 @@ def qa_agent(
             input_messages, supplemental = await compact.compact_input(state.messages)
             if supplemental is not None:
                 state.messages.append(supplemental)
+                # Add token budget reminder that may have been summarized away. Also nudge it to
+                # submit so it doesn't get into a loop of redoing its analysis.
+                reminder = ChatMessageUser(
+                    content=(
+                        f"You have used {output_tokens_used:,}/{max_output_tokens:,} output "
+                        f"tokens. If your analysis is complete, call the `submit_answer` tool."
+                    )
+                )
+                state.messages.append(reminder)
+                input_messages.append(reminder)
 
             state.output = await model.generate(input=input_messages, tools=state.tools)
             compact.record_output(state.output)
