@@ -118,13 +118,19 @@ AGENT_SUBMIT_DESCRIPTION = (
 
 
 @task(name="Chess Puzzles (Agent)")
-def chess_puzzles_agent(*, epochs: int = 1, max_output_tokens: int) -> Task:
+def chess_puzzles_agent(
+    *,
+    epochs: int = 1,
+    max_output_tokens: int,
+    compaction_threshold_tokens: int = 100_000,
+) -> Task:
     dataset = csv_dataset("bench/task/chess_puzzles/puzzles.csv")
 
     plan = [
         prompt_template(AGENT_QUESTION_TEMPLATE),
         qa_agent(
             max_output_tokens=max_output_tokens,
+            compaction_threshold_tokens=compaction_threshold_tokens,
             submit_description=AGENT_SUBMIT_DESCRIPTION,
         ),
     ]

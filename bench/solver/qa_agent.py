@@ -19,7 +19,6 @@ from inspect_ai.solver import Generate, Solver, TaskState, solver
 from inspect_ai.tool import Tool, think, tool, tool_with
 
 SUBMIT_NAME = "submit_answer"
-COMPACTION_THRESHOLD_TOKENS = 100_000
 
 PROMPT_TEMPLATE = (
     "Please answer the question below. Work through the problem carefully and then submit your "
@@ -55,17 +54,18 @@ def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
     return None
 
 
-def _pick_compaction_strategy(model: Model) -> CompactionStrategy:
+def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
     """Native compaction for OpenAI; summary compaction for everyone else."""
     if type(model.api).__name__ == "OpenAIAPI":
-        return CompactionNative(threshold=COMPACTION_THRESHOLD_TOKENS)
-    return CompactionSummary(threshold=COMPACTION_THRESHOLD_TOKENS)
+        return CompactionNative(threshold=threshold)
+    return CompactionSummary(threshold=threshold)
 
 
 @solver
 def qa_agent(
     *,
     max_output_tokens: int,
+    compaction_threshold_tokens: int,
     submit_description: str | None = None,
 ) -> Solver:
     """Agentic scaffold for single-question evals.
@@ -78,6 +78,8 @@ def qa_agent(
     Args:
       max_output_tokens: Output token budget across all model turns in the loop. When exhausted, the
         loop exits and the last assistant message is used as the final output.
+      compaction_threshold_tokens: Input token threshold that triggers compaction of the message
+        history.
       submit_description: Optional override for the submit tool's description.
     """
 
@@ -94,7 +96,7 @@ def qa_agent(
 
         model = get_model()
         compact = compaction(
-            strategy=_pick_compaction_strategy(model),
+            strategy=_pick_compaction_strategy(model, compaction_threshold_tokens),
             prefix=state.messages[:],
             tools=state.tools,
             model=model,
