@@ -131,7 +131,7 @@ def qa_agent(
                 input_messages.append(reminder)
 
             state.output = await model.generate(input=input_messages, tools=state.tools)
-            compact.record_output(state.output)
+            await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
 
             if state.output.usage is not None:
