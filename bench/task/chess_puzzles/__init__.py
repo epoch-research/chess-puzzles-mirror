@@ -17,7 +17,11 @@ from inspect_ai.solver import generate, prompt_template, TaskState
 
 from bench.model import default_grader_model
 from bench.solver.qa_agent import qa_agent
-from bench.task.model_extracted_answer import answer_submission_tool, extract_model_answer
+from bench.task.model_extracted_answer import (
+    answer_submission_tool,
+    extract_model_answer,
+    nullable_tool_param,
+)
 
 SOLUTION_PROMPT_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
 
@@ -52,13 +56,10 @@ def model_extracted_exact_match():
 
         extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
 
-        def submit(answer: str | None):
-            pass
-
         extracted_answer = await extract_model_answer(
             grader_model=default_grader_model(),
             extraction_prompt=extraction_prompt,
-            submission_tool=answer_submission_tool(submit),
+            submission_tool=answer_submission_tool(nullable_tool_param("string")),
         )
 
         if extracted_answer is None:
