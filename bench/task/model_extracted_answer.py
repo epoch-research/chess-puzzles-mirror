@@ -1,15 +1,38 @@
-from typing import Any, Callable
+from typing import Any, Literal
 
 from inspect_ai.model import Model
-from inspect_ai.tool import ToolDef, ToolFunction
+from inspect_ai.tool import ToolDef, ToolFunction, ToolParam, ToolParams
 
 
-def answer_submission_tool(submit: Callable[..., Any]) -> ToolDef:
+SubmissionParamType = Literal["string", "integer", "number", "boolean", "array", "object"]
+
+
+def nullable_tool_param(
+    param_type: SubmissionParamType,
+    description: str = "The answer",
+) -> ToolParam:
+    return ToolParam(
+        description=description,
+        anyOf=[
+            ToolParam(type=param_type),
+            ToolParam(type="null"),
+        ],
+    )
+
+
+def answer_submission_tool(
+    answer_param: ToolParam,
+    argument_name: str = "answer",
+    description: str = "Submit the answer",
+) -> ToolDef:
     return ToolDef(
-        tool=submit,
+        tool=lambda _: None,
         name="submit",
-        description="Submit the answer",
-        parameters={"answer": "The answer"},
+        description=description,
+        parameters=ToolParams(
+            properties={argument_name: answer_param},
+            required=[argument_name],
+        ),
     )
 
 
