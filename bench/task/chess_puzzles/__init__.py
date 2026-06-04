@@ -98,7 +98,7 @@ def chess_puzzles(epochs: int = 1) -> Task:
         scorer=model_extracted_exact_match(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.1.4",
+            "epochai-benchmark-version": "1.1.5",
             "inspect-log-public": True,
         },
     )
@@ -144,7 +144,7 @@ def chess_puzzles_agent(
         scorer=exact(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.0.2",
+            "epochai-benchmark-version": "1.0.3",
             "inspect-log-public": True,
         },
     )
