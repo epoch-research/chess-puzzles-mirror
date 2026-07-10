@@ -1,4 +1,5 @@
 from typing import Dict, Any
+from pathlib import Path
 
 from inspect_ai import Task, task, Epochs
 from inspect_ai.dataset import Sample, csv_dataset
@@ -48,6 +49,8 @@ Solution to extract from:
 
 </student_solution>"""
 
+PUZZLES_FILENAME = str(Path(__file__).parent / "puzzles.csv")
+
 
 @scorer(metrics=[accuracy(), stderr()])
 def model_extracted_exact_match():
@@ -86,7 +89,7 @@ def model_extracted_exact_match():
 
 @task(name="Chess Puzzles")
 def chess_puzzles(epochs: int = 1) -> Task:
-    dataset = csv_dataset("bench/task/chess_puzzles/puzzles.csv")
+    dataset = csv_dataset(PUZZLES_FILENAME)
 
     plan = [prompt_template(SOLUTION_PROMPT_TEMPLATE), generate()]
 
@@ -125,7 +128,7 @@ def chess_puzzles_agent(
     max_output_tokens: int,
     compaction_threshold_tokens: int = 100_000,
 ) -> Task:
-    dataset = csv_dataset("bench/task/chess_puzzles/puzzles.csv")
+    dataset = csv_dataset(PUZZLES_FILENAME)
 
     plan = [
         prompt_template(AGENT_QUESTION_TEMPLATE),
