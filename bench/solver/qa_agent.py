@@ -55,8 +55,15 @@ def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
 
 
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
-    """Native compaction for OpenAI; summary compaction for everyone else."""
-    if type(model.api).__name__ == "OpenAIAPI":
+    """Native compaction for OpenAI; summary compaction for everyone else.
+
+    Native compaction (`responses.compact`) is OpenAI-only: Anthropic's equivalent is
+    deliberately avoided (it compacts the original user prompt away), and xAI's
+    OpenAI-compatible endpoint doesn't implement it. Matched by exact class name rather
+    than isinstance because `EpochxAIAPI` subclasses `EpochOpenAIAPI` and must fall
+    through to summary compaction.
+    """
+    if type(model.api).__name__ in ("OpenAIAPI", "EpochOpenAIAPI"):
         return CompactionNative(threshold=threshold)
     return CompactionSummary(threshold=threshold)
 
