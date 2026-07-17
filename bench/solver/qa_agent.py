@@ -55,8 +55,16 @@ def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
 
 
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
-    """Native compaction for OpenAI; summary compaction for everyone else."""
-    if type(model.api).__name__ == "OpenAIAPI":
+    """Native compaction for OpenAI; summary compaction for everyone else.
+
+    Native compaction (`responses.compact`) is OpenAI-only: Anthropic's equivalent folds
+    the user prompt into a model-generated compaction block instead of preserving it
+    verbatim, and errored server-side when last tried (Inspect's token accounting
+    disagreed with Anthropic's); xAI's OpenAI-compatible endpoint doesn't implement it.
+    Matched by exact class name rather than isinstance because `EpochxAIAPI` subclasses
+    `EpochOpenAIAPI` and must fall through to summary compaction.
+    """
+    if type(model.api).__name__ in ("OpenAIAPI", "EpochOpenAIAPI"):
         return CompactionNative(threshold=threshold)
     return CompactionSummary(threshold=threshold)
 
@@ -144,16 +152,14 @@ def qa_agent(
                 )
                 break
 
-            if not state.output.message.tool_calls:
-                continue
+            if state.output.message.tool_calls:
+                tool_results, _ = await execute_tools([state.output.message], state.tools)
+                state.messages.extend(tool_results)
 
-            tool_results, _ = await execute_tools([state.output.message], state.tools)
-            state.messages.extend(tool_results)
-
-            answer = _extract_submission(tool_results)
-            if answer is not None:
-                state.output.completion = answer
-                break
+                answer = _extract_submission(tool_results)
+                if answer is not None:
+                    state.output.completion = answer
+                    break
 
             remaining = max_output_tokens - output_tokens_used
             if remaining <= 0:
@@ -162,7 +168,17 @@ def qa_agent(
                 )
                 break
 
+            # The next generate() requires the conversation to end with a user message: some
+            # providers (e.g. Anthropic adaptive-thinking models) reject a trailing assistant
+            # message as unsupported prefill. A turn without a tool call almost always means
+            # the model was cut off mid-reasoning by the per-call output limit (stop_reason
+            # "max_tokens"), so also nudge it to continue and submit.
             message = f"You have used {output_tokens_used:,}/{max_output_tokens:,} output tokens."
+            if not state.output.message.tool_calls:
+                message += (
+                    " Your previous response ended without a tool call (it may have been cut"
+                    " off). Please continue, and call `submit_answer` when you have your answer."
+                )
             state.messages.append(ChatMessageUser(content=message))
 
         return state
