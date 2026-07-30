@@ -79,9 +79,9 @@ def qa_agent(
     """Agentic scaffold for single-question evals.
 
     The sample's question (`state.user_prompt.text`) is wrapped in `PROMPT_TEMPLATE`. The model has
-    the `think` and `submit_answer` tools and loops until it submits or the output token budget is
-    exhausted. On submit, the submitted string is written to `state.output.completion` so the scorer
-    can see the answer without explicit plumbing.
+    the `think` and `submit_answer` tools and loops until it submits or reaches a budget backstop.
+    On submit, the submitted string is written to `state.output.completion` so the scorer can see
+    the answer without explicit plumbing.
 
     Args:
       max_output_tokens: Output token budget across all model turns in the loop. When exhausted, the
@@ -142,13 +142,22 @@ def qa_agent(
             await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
 
-            if state.output.usage is not None:
-                output_tokens_used += state.output.usage.output_tokens
+            turn_output_tokens = (
+                state.output.usage.output_tokens if state.output.usage is not None else 0
+            )
+            output_tokens_used += turn_output_tokens
 
             if state.output.stop_reason == "model_length":
                 transcript().info(
                     "qa_agent: terminated — model context window was exceeded "
                     '("stop_reason"="model_length") before the submit tool was called'
+                )
+                break
+
+            if state.output.stop_reason == "content_filter":
+                transcript().info(
+                    "qa_agent: terminated — model response was blocked by a content filter "
+                    "before the submit tool was called"
                 )
                 break
 
@@ -168,11 +177,15 @@ def qa_agent(
                 )
                 break
 
+            if turn_output_tokens <= 0:
+                transcript().info(
+                    "qa_agent: terminated — model made no progress against the output token budget"
+                )
+                break
+
             # The next generate() requires the conversation to end with a user message: some
             # providers (e.g. Anthropic adaptive-thinking models) reject a trailing assistant
-            # message as unsupported prefill. A turn without a tool call almost always means
-            # the model was cut off mid-reasoning by the per-call output limit (stop_reason
-            # "max_tokens"), so also nudge it to continue and submit.
+            # message as unsupported prefill.
             message = f"You have used {output_tokens_used:,}/{max_output_tokens:,} output tokens."
             if not state.output.message.tool_calls:
                 message += (
