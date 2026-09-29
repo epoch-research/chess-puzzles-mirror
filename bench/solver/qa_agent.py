@@ -16,14 +16,13 @@ from inspect_ai.model import (
 )
 from inspect_ai.model._compaction.types import CompactionStrategy
 from inspect_ai.solver import Generate, Solver, TaskState, solver
-from inspect_ai.tool import Tool, think, tool, tool_with
+from inspect_ai.tool import Tool, tool, tool_with
 
 SUBMIT_NAME = "submit_answer"
 
 PROMPT_TEMPLATE = (
     "Please answer the question below. Work through the problem carefully and then submit your "
-    "final answer using the `submit_answer` tool. Use the `think` tool to record your reasoning. "
-    "Feel free to use it as much as you want.\n"
+    "final answer using the `submit_answer` tool.\n"
     "\n"
     "You have a maximum of {max_output_tokens:,} output tokens. I will remind you of how many "
     "tokens you have remaining.\n"
@@ -79,7 +78,7 @@ def qa_agent(
     """Agentic scaffold for single-question evals.
 
     The sample's question (`state.user_prompt.text`) is wrapped in `PROMPT_TEMPLATE`. The model has
-    the `think` and `submit_answer` tools and loops until it submits or reaches a budget backstop.
+    the `submit_answer` tool and loops until it submits or reaches a budget backstop.
     On submit, the submitted string is written to `state.output.completion` so the scorer can see
     the answer without explicit plumbing.
 
@@ -100,7 +99,7 @@ def qa_agent(
         submit_tool = submit_answer()
         if submit_description is not None:
             submit_tool = tool_with(submit_tool, description=submit_description)
-        state.tools = [think(), submit_tool]
+        state.tools = [submit_tool]
 
         model = get_model()
         compact = compaction(

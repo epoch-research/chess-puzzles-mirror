@@ -147,7 +147,7 @@ def chess_puzzles_agent(
         scorer=exact(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.0.4",
+            "epochai-benchmark-version": "1.1.0",
             "inspect-log-public": True,
         },
     )
