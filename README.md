@@ -14,8 +14,8 @@ Each of the 100 samples in `bench/task/chess_puzzles/puzzles.csv` is a FEN posit
 
 Two [Inspect](https://inspect.aisi.org.uk/) tasks are defined in `bench/task/chess_puzzles/__init__.py`:
 
-- **Chess Puzzles**: single generation; a grader model extracts the final move from the response, which is then exact-matched against the target.
-- **Chess Puzzles (Agent)**: the model runs in a loop (`bench/solver/qa_agent.py`) with a `submit_answer` tool, an output-token budget and context compaction; the submitted move is exact-matched.
+- **Chess Puzzles**: the task behind all our published Chess Puzzles results. Single generation; a grader model extracts the final move from the response, which is then exact-matched against the target.
+- **Chess Puzzles (Agent)**: an experimental variant that we don't (yet) use for any reported results. The model runs in a loop (`bench/solver/qa_agent.py`) with a `submit_answer` tool, an output-token budget and context compaction; the submitted move is exact-matched.
 
 ## Running
 
