@@ -1,6 +1,14 @@
 # Chess Puzzles
 
-Epoch AI's Chess Puzzles benchmark, extracted from our internal benchmarks repository (history preserved for the relevant files).
+Epoch AI's Chess Puzzles benchmark.
+
+Despite the name, this is not a live mirror: it's a one-off snapshot of our internal (private) benchmarks repository, and won't automatically track changes made there. It was made by:
+
+1. running [`git filter-repo`](https://github.com/newren/git-filter-repo) on the internal repo to keep only the chess task and the files it depends on (`bench/task/chess_puzzles/`, `bench/task/model_extracted_answer.py`, `bench/solver/`), preserving their commit history;
+2. lightly editing a few commit messages that referenced unrelated internal work;
+3. adding a final commit that makes the code standalone (grader model resolved via Inspect model roles rather than our internal provider wrappers, plus `pyproject.toml`, `uv.lock` and this README).
+
+Earlier commits import internal modules that aren't included here, so only the latest commit is runnable. Some commit messages mention other internal benchmarks and tooling that aren't part of this repo.
 
 Each of the 100 samples in `bench/task/chess_puzzles/puzzles.csv` is a FEN position; the target is the best next move in `<from><to>` square notation (e.g. `d4d3`).
 
