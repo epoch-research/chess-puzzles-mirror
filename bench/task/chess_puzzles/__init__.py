@@ -14,9 +14,9 @@ from inspect_ai.scorer import (
     exact,
     stderr,
 )
+from inspect_ai.model import GenerateConfig, Model, get_model
 from inspect_ai.solver import generate, prompt_template, TaskState
 
-from bench.model import default_grader_model
 from bench.solver.qa_agent import qa_agent
 from bench.task.model_extracted_answer import (
     answer_submission_tool,
@@ -50,6 +50,17 @@ Solution to extract from:
 </student_solution>"""
 
 PUZZLES_FILENAME = str(Path(__file__).parent / "puzzles.csv")
+
+DEFAULT_GRADER_MODEL = "openai/gpt-5.6-terra"
+
+
+def default_grader_model() -> Model:
+    """Override with `--model-role grader=<provider/model>`."""
+    return get_model(
+        role="grader",
+        default=DEFAULT_GRADER_MODEL,
+        config=GenerateConfig(reasoning_effort="medium"),
+    )
 
 
 @scorer(metrics=[accuracy(), stderr()])
