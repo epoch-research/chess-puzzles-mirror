@@ -132,12 +132,18 @@ AGENT_SUBMIT_DESCRIPTION = (
 )
 
 
+AGENT_FINAL_ANSWER_PROMPT = (
+    "You have run out of output tokens. Do not reason any further: call `submit_answer` now with "
+    "your best move."
+)
+
+
 @task(name="Chess Puzzles (Agent)")
 def chess_puzzles_agent(
     *,
     epochs: int = 1,
     max_output_tokens: int,
-    compaction_threshold_tokens: int = 100_000,
+    compaction_threshold_tokens: int,
 ) -> Task:
     dataset = csv_dataset(PUZZLES_FILENAME)
 
@@ -147,6 +153,7 @@ def chess_puzzles_agent(
             max_output_tokens=max_output_tokens,
             compaction_threshold_tokens=compaction_threshold_tokens,
             submit_description=AGENT_SUBMIT_DESCRIPTION,
+            final_answer_prompt=AGENT_FINAL_ANSWER_PROMPT,
         ),
     ]
 
@@ -158,7 +165,7 @@ def chess_puzzles_agent(
         scorer=exact(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.1.0",
+            "epochai-benchmark-version": "1.2.0",
             "inspect-log-public": True,
         },
     )

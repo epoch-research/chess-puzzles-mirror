@@ -9,6 +9,7 @@ from inspect_ai.model import (
     ChatMessageUser,
     CompactionNative,
     CompactionSummary,
+    GenerateConfig,
     Model,
     compaction,
     execute_tools,
@@ -16,9 +17,19 @@ from inspect_ai.model import (
 )
 from inspect_ai.model._compaction.types import CompactionStrategy
 from inspect_ai.solver import Generate, Solver, TaskState, solver
-from inspect_ai.tool import Tool, tool, tool_with
+from inspect_ai.tool import Tool, ToolFunction, tool, tool_with
+
+from bench.solver.forced_answer import lowest_reasoning_effort, supports_forced_tool_choice
 
 SUBMIT_NAME = "submit_answer"
+
+# Output cap for the forced final answer. The answer itself is a few tokens, but at their lowest
+# reasoning effort some models (those without `none`) still reason briefly first.
+FINAL_ANSWER_MAX_TOKENS = 16_000
+
+# Every call asks for the model's full reasoning history, so that providers which drop replayed
+# reasoning by default (Zhipu, Alibaba) keep it: the model can build on its earlier turns.
+FULL_REASONING_HISTORY = GenerateConfig(reasoning_history="all")
 
 PROMPT_TEMPLATE = (
     "Please answer the question below. Work through the problem carefully and then submit your "
@@ -53,6 +64,19 @@ def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
     return None
 
 
+async def _submit_if_called(state: TaskState) -> bool:
+    """Execute the last message's tool calls; on a submission, make it the output completion."""
+    if not state.output.message.tool_calls:
+        return False
+    tool_results, _ = await execute_tools([state.output.message], state.tools)
+    state.messages.extend(tool_results)
+    answer = _extract_submission(tool_results)
+    if answer is None:
+        return False
+    state.output.completion = answer
+    return True
+
+
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
     """Native compaction for OpenAI; summary compaction for everyone else.
 
@@ -73,6 +97,7 @@ def qa_agent(
     *,
     max_output_tokens: int,
     compaction_threshold_tokens: int,
+    final_answer_prompt: str,
     submit_description: str | None = None,
 ) -> Solver:
     """Agentic scaffold for single-question evals.
@@ -82,11 +107,17 @@ def qa_agent(
     On submit, the submitted string is written to `state.output.completion` so the scorer can see
     the answer without explicit plumbing.
 
+    If the output token budget (or the turn cap) runs out before a submission, the model gets
+    `final_answer_prompt` and one last call at its lowest reasoning effort, with `submit_answer`
+    forced via `tool_choice` where the model supports it. `metadata["forced_final_answer"]` records
+    whether that happened.
+
     Args:
       max_output_tokens: Output token budget across all model turns in the loop. When exhausted, the
         loop exits and the last assistant message is used as the final output.
       compaction_threshold_tokens: Input token threshold that triggers compaction of the message
         history.
+      final_answer_prompt: User message asking for an immediate answer once the budget runs out.
       submit_description: Optional override for the submit tool's description.
     """
 
@@ -116,10 +147,12 @@ def qa_agent(
 
         output_tokens_used = 0
         turns = 0
+        exhausted = False
 
         while not state.completed:
             if turns >= max_turns:
                 transcript().info(f"qa_agent: terminated — reached turn cap of {max_turns}")
+                exhausted = True
                 break
             turns += 1
 
@@ -137,7 +170,9 @@ def qa_agent(
                 state.messages.append(reminder)
                 input_messages.append(reminder)
 
-            state.output = await model.generate(input=input_messages, tools=state.tools)
+            state.output = await model.generate(
+                input=input_messages, tools=state.tools, config=FULL_REASONING_HISTORY
+            )
             await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
 
@@ -160,20 +195,15 @@ def qa_agent(
                 )
                 break
 
-            if state.output.message.tool_calls:
-                tool_results, _ = await execute_tools([state.output.message], state.tools)
-                state.messages.extend(tool_results)
-
-                answer = _extract_submission(tool_results)
-                if answer is not None:
-                    state.output.completion = answer
-                    break
+            if await _submit_if_called(state):
+                break
 
             remaining = max_output_tokens - output_tokens_used
             if remaining <= 0:
                 transcript().info(
                     f"qa_agent: output token budget of {max_output_tokens:,} exhausted"
                 )
+                exhausted = True
                 break
 
             if turn_output_tokens <= 0:
@@ -192,6 +222,28 @@ def qa_agent(
                     " off). Please continue, and call `submit_answer` when you have your answer."
                 )
             state.messages.append(ChatMessageUser(content=message))
+
+        state.metadata["forced_final_answer"] = exhausted
+        if exhausted:
+            model_name = str(state.model)
+            state.messages.append(ChatMessageUser(content=final_answer_prompt))
+            input_messages, _ = await compact.compact_input(state.messages)
+            state.output = await model.generate(
+                input=input_messages,
+                tools=state.tools,
+                tool_choice=(
+                    ToolFunction(SUBMIT_NAME) if supports_forced_tool_choice(model_name) else "auto"
+                ),
+                config=FULL_REASONING_HISTORY.merge(
+                    GenerateConfig(
+                        max_tokens=FINAL_ANSWER_MAX_TOKENS,
+                        reasoning_effort=lowest_reasoning_effort(model_name),
+                    )
+                ),
+            )
+            await compact.record_output(input_messages, state.output)
+            state.messages.append(state.output.message)
+            await _submit_if_called(state)
 
         return state
 
