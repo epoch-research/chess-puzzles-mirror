@@ -28,6 +28,11 @@ Scores are not comparable with 1.x.
   gpt-5-mini grader).
 - The prompt changed: the one-call "conclude with `MOVE: b1c3`" instruction is replaced by
   `qa_agent`'s wrapper (which states the token budget) and a `submit_answer` tool description.
+  - Configs with little or no reasoning (e.g. `minimal` effort) score lower than in 1.x. With a
+    `submit_answer` tool they answer almost immediately, while the 1.x prompt ("You may think as
+    much as you would like") led them to write out their analysis before the move. For example,
+    Gemini 3.5 Flash at `minimal` effort went from 43% to 27%. Configs that reason at medium effort
+    or more score about the same as in 1.x, apart from the cut-off fix above.
 - Samples are numbered 1–100 in dataset order, so they can be selected by id.
 - `max_output_tokens` and `compaction_threshold_tokens` are required task arguments, with no
   defaults in the task.
