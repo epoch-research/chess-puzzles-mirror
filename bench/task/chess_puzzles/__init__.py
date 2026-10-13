@@ -1,124 +1,15 @@
-from typing import Dict, Any
 from pathlib import Path
 
 from inspect_ai import Task, task, Epochs
-from inspect_ai.dataset import Sample, csv_dataset
-from inspect_ai.scorer import (
-    scorer,
-    Score,
-    Target,
-    CORRECT,
-    INCORRECT,
-    NOANSWER,
-    accuracy,
-    exact,
-    stderr,
-)
-from inspect_ai.model import GenerateConfig, Model, get_model
-from inspect_ai.solver import generate, prompt_template, TaskState
+from inspect_ai.dataset import csv_dataset
+from inspect_ai.scorer import exact
+from inspect_ai.solver import prompt_template
 
 from bench.solver.qa_agent import qa_agent
-from bench.task.model_extracted_answer import (
-    answer_submission_tool,
-    extract_model_answer,
-    nullable_tool_param,
-)
-
-SOLUTION_PROMPT_TEMPLATE = """Below is a FEN string representing the state of a chess game. Please analyze the position and determine the best next move for the player whose turn it is. You may think as much as you would like, but please conclude your response with the move expressed as a four-character string stating the starting and ending square of the piece to be moved, using the format "MOVE: b1c3" (without quotes).
-
-{prompt}
-
-"""
-
-EXTRACTION_PROMPT_TEMPLATE = """**Task: Extract a student's answer to a single-move chess puzzle and submit the move that is their final answer.**
-
-Instructions:
-- Read the student's entire solution carefully to identify their final answer.
-- The student is supposed to have concluded their solution with "MOVE: [answer]" where [answer] is given as a four-character string stating the starting and ending square of the piece to be moved, e.g. b1c3.
-- If the solution appears in that format, extract the move and submit it as the final answer.
-- Otherwise, do your best to identify the final answer.
-- Use the tool provided to submit the extracted answer.
-- If there are multiple moves in the solution, extract the one that represents the main answer to the puzzle.
-- If no clear final answer can be identified, submit `None` instead.
-
-Solution to extract from:
-
-<student_solution>
-
-{student_solution}
-
-</student_solution>"""
 
 PUZZLES_FILENAME = str(Path(__file__).parent / "puzzles.csv")
 
-DEFAULT_GRADER_MODEL = "openai/gpt-5.6-terra"
-
-
-def default_grader_model() -> Model:
-    """Override with `--model-role grader=<provider/model>`."""
-    return get_model(
-        role="grader",
-        default=DEFAULT_GRADER_MODEL,
-        config=GenerateConfig(reasoning_effort="medium"),
-    )
-
-
-@scorer(metrics=[accuracy(), stderr()])
-def model_extracted_exact_match():
-    async def score(state: TaskState, target: Target) -> Score:
-        student_solution = state.output.completion
-
-        extraction_prompt = EXTRACTION_PROMPT_TEMPLATE.format(student_solution=student_solution)
-
-        extracted_answer = await extract_model_answer(
-            grader_model=default_grader_model(),
-            extraction_prompt=extraction_prompt,
-            submission_tool=answer_submission_tool(nullable_tool_param("string")),
-        )
-
-        if extracted_answer is None:
-            return Score(
-                value=NOANSWER,
-                explanation="No clear answer was given",
-            )
-
-        is_correct = extracted_answer == target.text
-        explanation = (
-            f"The model answered {extracted_answer}, which is correct."
-            if is_correct
-            else f"The model answered {extracted_answer}, but the correct answer is {target.text}."
-        )
-
-        return Score(
-            value=CORRECT if is_correct else INCORRECT,
-            answer=str(extracted_answer),
-            explanation=explanation,
-        )
-
-    return score
-
-
-@task(name="Chess Puzzles")
-def chess_puzzles(epochs: int = 1) -> Task:
-    dataset = csv_dataset(PUZZLES_FILENAME)
-
-    plan = [prompt_template(SOLUTION_PROMPT_TEMPLATE), generate()]
-
-    reducers = ["mean"]
-
-    return Task(
-        dataset=dataset,
-        plan=plan,
-        scorer=model_extracted_exact_match(),
-        epochs=Epochs(epochs, reducers),
-        metadata={
-            "epochai-benchmark-version": "1.1.6",
-            "inspect-log-public": True,
-        },
-    )
-
-
-AGENT_QUESTION_TEMPLATE = (
+QUESTION_TEMPLATE = (
     "Below is a FEN string representing the state of a chess game. Analyze the position and "
     "determine the best next move for the player whose turn it is.\n"
     "\n"
@@ -126,34 +17,40 @@ AGENT_QUESTION_TEMPLATE = (
 )
 
 
-AGENT_SUBMIT_DESCRIPTION = (
+SUBMIT_DESCRIPTION = (
     "Submit the best next move as a four-character string stating the starting and ending squares "
     "of the piece to be moved, e.g. b1c3. The conversation will end immediately."
 )
 
 
-AGENT_FINAL_ANSWER_PROMPT = (
+FINAL_ANSWER_PROMPT = (
     "You have run out of output tokens. Do not reason any further: call `submit_answer` now with "
     "your best move."
 )
 
 
-@task(name="Chess Puzzles (Agent)")
-def chess_puzzles_agent(
+@task(name="Chess Puzzles")
+def chess_puzzles(
     *,
     epochs: int = 1,
     max_output_tokens: int,
     compaction_threshold_tokens: int,
 ) -> Task:
-    dataset = csv_dataset(PUZZLES_FILENAME)
+    """Single-move chess puzzles, answered through qa_agent.
+
+    2.0.0 replaced the one-call harness (where a response cut off at the model's output token limit
+    scored as no answer) with qa_agent, which continues cut-off responses and forces a final answer
+    if the token budget runs out.
+    """
+    dataset = csv_dataset(PUZZLES_FILENAME, auto_id=True)
 
     plan = [
-        prompt_template(AGENT_QUESTION_TEMPLATE),
+        prompt_template(QUESTION_TEMPLATE),
         qa_agent(
             max_output_tokens=max_output_tokens,
             compaction_threshold_tokens=compaction_threshold_tokens,
-            submit_description=AGENT_SUBMIT_DESCRIPTION,
-            final_answer_prompt=AGENT_FINAL_ANSWER_PROMPT,
+            submit_description=SUBMIT_DESCRIPTION,
+            final_answer_prompt=FINAL_ANSWER_PROMPT,
         ),
     ]
 
@@ -165,7 +62,7 @@ def chess_puzzles_agent(
         scorer=exact(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "1.2.0",
+            "epochai-benchmark-version": "2.0.0",
             "inspect-log-public": True,
         },
     )
