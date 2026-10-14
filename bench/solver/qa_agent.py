@@ -1,6 +1,7 @@
 """Agentic scaffold for non-agentic QA-style evals."""
 
 import math
+from typing import TypeGuard
 
 from inspect_ai.log._transcript import transcript
 from inspect_ai.model import (
@@ -11,6 +12,7 @@ from inspect_ai.model import (
     CompactionNative,
     CompactionSummary,
     ContentReasoning,
+    ContentText,
     GenerateConfig,
     Model,
     compaction,
@@ -34,9 +36,12 @@ FINAL_ANSWER_MAX_TOKENS = 16_000
 FULL_REASONING_HISTORY = GenerateConfig(reasoning_history="all")
 
 # OpenAI rejects a replayed `encrypted_content` longer than this (400 `string_above_max_length`).
-# A response cut off at 128k tokens of reasoning encrypts to ~1.5M characters, so it can't be
-# continued; the model is asked for its final answer instead, without that reasoning.
+# A response cut off at 128k tokens of reasoning can encrypt to ~1.5M characters; such reasoning is
+# replaced in the history by OpenAI's summary of it, as visible text, so the model can continue.
 MAX_REPLAYED_ENCRYPTED_REASONING_CHARS = 1_048_576
+REASONING_SUMMARY_HEADER = (
+    "Summary of my reasoning so far (the full reasoning was too long to keep):"
+)
 
 PROMPT_TEMPLATE = (
     "Please answer the question below. Work through the problem carefully and then submit your "
@@ -94,7 +99,7 @@ def _caps_replayed_encrypted_reasoning(model: Model) -> bool:
     return _is_openai(model)
 
 
-def _is_oversized_reasoning(content: object) -> bool:
+def _is_oversized_reasoning(content: object) -> TypeGuard[ContentReasoning]:
     return (
         isinstance(content, ContentReasoning)
         and content.redacted
@@ -102,26 +107,24 @@ def _is_oversized_reasoning(content: object) -> bool:
     )
 
 
-def _has_oversized_reasoning(messages: list[ChatMessage]) -> bool:
-    return any(
-        _is_oversized_reasoning(c)
-        for m in messages
-        if isinstance(m, ChatMessageAssistant) and isinstance(m.content, list)
-        for c in m.content
-    )
-
-
-def _without_oversized_reasoning(messages: list[ChatMessage]) -> list[ChatMessage]:
-    """Drop oversized reasoning items, and assistant messages left empty without them."""
-    kept: list[ChatMessage] = []
-    for m in messages:
-        if isinstance(m, ChatMessageAssistant) and isinstance(m.content, list):
-            content = [c for c in m.content if not _is_oversized_reasoning(c)]
-            if not content and not m.tool_calls:
-                continue
-            m = m.model_copy(update={"content": content})
-        kept.append(m)
-    return kept
+def _summarize_oversized_reasoning(message: ChatMessageAssistant) -> int:
+    """Replace oversized encrypted reasoning with its summary as text; return how many."""
+    if not isinstance(message.content, list):
+        return 0
+    oversized = [c for c in message.content if _is_oversized_reasoning(c)]
+    if any(not c.summary for c in oversized):
+        raise ValueError(
+            "Encrypted reasoning is too long to replay and has no summary to replace it with."
+        )
+    message.content = [
+        (
+            ContentText(text=f"{REASONING_SUMMARY_HEADER}\n\n{c.summary}")
+            if _is_oversized_reasoning(c)
+            else c
+        )
+        for c in message.content
+    ]
+    return len(oversized)
 
 
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
@@ -152,11 +155,14 @@ def qa_agent(
     On submit, the submitted string is written to `state.output.completion` so the scorer can see
     the answer without explicit plumbing.
 
-    If the output token budget (or the turn cap) runs out before a submission, or a cut-off
-    response's encrypted reasoning is too long for OpenAI to accept back, the model gets
+    If the output token budget (or the turn cap) runs out before a submission, the model gets
     `final_answer_prompt` and one last call at its lowest reasoning effort, with `submit_answer`
     forced via `tool_choice` where the model supports it. `metadata["forced_final_answer"]` records
     whether that happened.
+
+    On OpenAI, encrypted reasoning too long to send back (over
+    `MAX_REPLAYED_ENCRYPTED_REASONING_CHARS`) is replaced in the history by its summary, as text;
+    `metadata["reasoning_replaced_by_summary"]` counts those replacements.
 
     Args:
       max_output_tokens: Output token budget across all model turns in the loop. When exhausted, the
@@ -194,6 +200,7 @@ def qa_agent(
         output_tokens_used = 0
         turns = 0
         exhausted = False
+        reasoning_summaries = 0
 
         while not state.completed:
             if turns >= max_turns:
@@ -201,17 +208,6 @@ def qa_agent(
                 exhausted = True
                 break
             turns += 1
-
-            if _caps_replayed_encrypted_reasoning(model) and _has_oversized_reasoning(
-                state.messages
-            ):
-                transcript().info(
-                    "qa_agent: encrypted reasoning too long to replay "
-                    f"(over {MAX_REPLAYED_ENCRYPTED_REASONING_CHARS:,} characters); "
-                    "asking for the final answer without it"
-                )
-                exhausted = True
-                break
 
             input_messages, supplemental = await compact.compact_input(state.messages)
             if supplemental is not None:
@@ -232,6 +228,15 @@ def qa_agent(
             )
             await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
+            if _caps_replayed_encrypted_reasoning(model):
+                summarized = _summarize_oversized_reasoning(state.output.message)
+                if summarized:
+                    transcript().info(
+                        "qa_agent: encrypted reasoning too long to replay (over "
+                        f"{MAX_REPLAYED_ENCRYPTED_REASONING_CHARS:,} characters); replaced by its "
+                        "summary"
+                    )
+                    reasoning_summaries += summarized
 
             turn_output_tokens = (
                 state.output.usage.output_tokens if state.output.usage is not None else 0
@@ -281,12 +286,11 @@ def qa_agent(
             state.messages.append(ChatMessageUser(content=message))
 
         state.metadata["forced_final_answer"] = exhausted
+        state.metadata["reasoning_replaced_by_summary"] = reasoning_summaries
         if exhausted:
             model_name = str(state.model)
             state.messages.append(ChatMessageUser(content=final_answer_prompt))
-            input_messages, _ = await compact.compact_input(
-                _without_oversized_reasoning(state.messages)
-            )
+            input_messages, _ = await compact.compact_input(state.messages)
             state.output = await model.generate(
                 input=input_messages,
                 tools=state.tools,

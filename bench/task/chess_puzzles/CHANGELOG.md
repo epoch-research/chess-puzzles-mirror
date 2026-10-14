@@ -12,11 +12,11 @@ bump (see 1.1.6).
 
 ## 2.0.1 (2026-10-14)
 
-- An OpenAI response cut off while still reasoning, with encrypted reasoning too long for OpenAI to
-  accept back (over 1,048,576 characters, which a 128k-token response exceeds), now gets the
-  forced final answer, sent without that reasoning. Before, continuing it failed with a 400
-  (`string_above_max_length`) and the sample errored. Recorded as `forced_final_answer`, like a
-  budget run-out. Other providers and other samples are unchanged.
+- On OpenAI, a response cut off with encrypted reasoning too long to send back (over 1,048,576
+  characters, which a 128k-token response can exceed) is now continued from OpenAI's summary of
+  that reasoning, given to the model as text in its earlier turn. Before, continuing it failed with
+  a 400 (`string_above_max_length`) and the sample errored. Counted in sample metadata as
+  `reasoning_replaced_by_summary`. Other providers and other samples are unchanged.
 
 ## 2.0.0 (2026-10-13)
 
