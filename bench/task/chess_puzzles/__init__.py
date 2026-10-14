@@ -62,7 +62,7 @@ def chess_puzzles(
         scorer=exact(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "2.0.0",
+            "epochai-benchmark-version": "2.0.1",
             "inspect-log-public": True,
         },
     )

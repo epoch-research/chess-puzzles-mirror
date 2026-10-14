@@ -5,10 +5,12 @@ import math
 from inspect_ai.log._transcript import transcript
 from inspect_ai.model import (
     ChatMessage,
+    ChatMessageAssistant,
     ChatMessageTool,
     ChatMessageUser,
     CompactionNative,
     CompactionSummary,
+    ContentReasoning,
     GenerateConfig,
     Model,
     compaction,
@@ -30,6 +32,11 @@ FINAL_ANSWER_MAX_TOKENS = 16_000
 # Every call asks for the model's full reasoning history, so that providers which drop replayed
 # reasoning by default (Zhipu, Alibaba) keep it: the model can build on its earlier turns.
 FULL_REASONING_HISTORY = GenerateConfig(reasoning_history="all")
+
+# OpenAI rejects a replayed `encrypted_content` longer than this (400 `string_above_max_length`).
+# A response cut off at 128k tokens of reasoning encrypts to ~1.5M characters, so it can't be
+# continued; the model is asked for its final answer instead, without that reasoning.
+MAX_REPLAYED_ENCRYPTED_REASONING_CHARS = 1_048_576
 
 PROMPT_TEMPLATE = (
     "Please answer the question below. Work through the problem carefully and then submit your "
@@ -77,6 +84,46 @@ async def _submit_if_called(state: TaskState) -> bool:
     return True
 
 
+def _is_openai(model: Model) -> bool:
+    """Matched by exact class name rather than isinstance because `EpochxAIAPI` subclasses
+    `EpochOpenAIAPI` and must not count as OpenAI."""
+    return type(model.api).__name__ in ("OpenAIAPI", "EpochOpenAIAPI")
+
+
+def _caps_replayed_encrypted_reasoning(model: Model) -> bool:
+    return _is_openai(model)
+
+
+def _is_oversized_reasoning(content: object) -> bool:
+    return (
+        isinstance(content, ContentReasoning)
+        and content.redacted
+        and len(content.reasoning) > MAX_REPLAYED_ENCRYPTED_REASONING_CHARS
+    )
+
+
+def _has_oversized_reasoning(messages: list[ChatMessage]) -> bool:
+    return any(
+        _is_oversized_reasoning(c)
+        for m in messages
+        if isinstance(m, ChatMessageAssistant) and isinstance(m.content, list)
+        for c in m.content
+    )
+
+
+def _without_oversized_reasoning(messages: list[ChatMessage]) -> list[ChatMessage]:
+    """Drop oversized reasoning items, and assistant messages left empty without them."""
+    kept: list[ChatMessage] = []
+    for m in messages:
+        if isinstance(m, ChatMessageAssistant) and isinstance(m.content, list):
+            content = [c for c in m.content if not _is_oversized_reasoning(c)]
+            if not content and not m.tool_calls:
+                continue
+            m = m.model_copy(update={"content": content})
+        kept.append(m)
+    return kept
+
+
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
     """Native compaction for OpenAI; summary compaction for everyone else.
 
@@ -84,10 +131,8 @@ def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrateg
     the user prompt into a model-generated compaction block instead of preserving it
     verbatim, and errored server-side when last tried (Inspect's token accounting
     disagreed with Anthropic's); xAI's OpenAI-compatible endpoint doesn't implement it.
-    Matched by exact class name rather than isinstance because `EpochxAIAPI` subclasses
-    `EpochOpenAIAPI` and must fall through to summary compaction.
     """
-    if type(model.api).__name__ in ("OpenAIAPI", "EpochOpenAIAPI"):
+    if _is_openai(model):
         return CompactionNative(threshold=threshold)
     return CompactionSummary(threshold=threshold)
 
@@ -107,7 +152,8 @@ def qa_agent(
     On submit, the submitted string is written to `state.output.completion` so the scorer can see
     the answer without explicit plumbing.
 
-    If the output token budget (or the turn cap) runs out before a submission, the model gets
+    If the output token budget (or the turn cap) runs out before a submission, or a cut-off
+    response's encrypted reasoning is too long for OpenAI to accept back, the model gets
     `final_answer_prompt` and one last call at its lowest reasoning effort, with `submit_answer`
     forced via `tool_choice` where the model supports it. `metadata["forced_final_answer"]` records
     whether that happened.
@@ -155,6 +201,17 @@ def qa_agent(
                 exhausted = True
                 break
             turns += 1
+
+            if _caps_replayed_encrypted_reasoning(model) and _has_oversized_reasoning(
+                state.messages
+            ):
+                transcript().info(
+                    "qa_agent: encrypted reasoning too long to replay "
+                    f"(over {MAX_REPLAYED_ENCRYPTED_REASONING_CHARS:,} characters); "
+                    "asking for the final answer without it"
+                )
+                exhausted = True
+                break
 
             input_messages, supplemental = await compact.compact_input(state.messages)
             if supplemental is not None:
@@ -227,7 +284,9 @@ def qa_agent(
         if exhausted:
             model_name = str(state.model)
             state.messages.append(ChatMessageUser(content=final_answer_prompt))
-            input_messages, _ = await compact.compact_input(state.messages)
+            input_messages, _ = await compact.compact_input(
+                _without_oversized_reasoning(state.messages)
+            )
             state.output = await model.generate(
                 input=input_messages,
                 tools=state.tools,
