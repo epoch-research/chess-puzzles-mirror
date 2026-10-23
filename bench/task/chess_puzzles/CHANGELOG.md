@@ -93,3 +93,15 @@ Scores are not comparable with 1.x.
 - Initial version: 100 single-move puzzles given as FEN strings. The model answers in one call,
   concluding with the move in the form `MOVE: b1c3`; gemini-2.0-flash extracts the move, which is
   scored by exact match against the solution.
+
+## Chess Puzzles (Decision)
+
+Shares its version number with Chess Puzzles.
+
+### 2.0.1
+
+- New task for models that can't write text (e.g. TypeSafe's Jev): the same puzzles, prompt and
+  `submit_answer` tool as Chess Puzzles, scored by exact match, but answered in one call that picks
+  from the position's legal moves, without qa_agent's prompt wrapper. A response without a
+  submission scores as no answer. Moves are offered in python-chess's order (`shuffle=true`
+  shuffles them per puzzle and epoch).

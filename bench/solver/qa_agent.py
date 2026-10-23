@@ -5,9 +5,7 @@ from typing import TypeGuard
 
 from inspect_ai.log._transcript import transcript
 from inspect_ai.model import (
-    ChatMessage,
     ChatMessageAssistant,
-    ChatMessageTool,
     ChatMessageUser,
     CompactionNative,
     CompactionSummary,
@@ -16,16 +14,14 @@ from inspect_ai.model import (
     GenerateConfig,
     Model,
     compaction,
-    execute_tools,
     get_model,
 )
 from inspect_ai.model._compaction.types import CompactionStrategy
 from inspect_ai.solver import Generate, Solver, TaskState, solver
-from inspect_ai.tool import Tool, ToolFunction, tool, tool_with
+from inspect_ai.tool import tool_with
 
-from bench.solver.forced_answer import lowest_reasoning_effort, supports_forced_tool_choice
-
-SUBMIT_NAME = "submit_answer"
+from bench.solver.forced_answer import forced_tool_choice, lowest_reasoning_effort
+from bench.solver.submission import SUBMIT_NAME, submit_answer, submit_if_called
 
 # Output cap for the forced final answer. The answer itself is a few tokens, but at their lowest
 # reasoning effort some models (those without `none`) still reason briefly first.
@@ -54,39 +50,6 @@ PROMPT_TEMPLATE = (
     "\n"
     "{question}"
 )
-
-
-@tool
-def submit_answer() -> Tool:
-    async def execute(answer: str) -> str:
-        """Submit your final answer. The conversation will end immediately.
-
-        Args:
-          answer: Your answer.
-        """
-        return answer
-
-    return execute
-
-
-def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
-    for result in tool_results:
-        if isinstance(result, ChatMessageTool) and result.function == SUBMIT_NAME:
-            return result.text
-    return None
-
-
-async def _submit_if_called(state: TaskState) -> bool:
-    """Execute the last message's tool calls; on a submission, make it the output completion."""
-    if not state.output.message.tool_calls:
-        return False
-    tool_results, _ = await execute_tools([state.output.message], state.tools)
-    state.messages.extend(tool_results)
-    answer = _extract_submission(tool_results)
-    if answer is None:
-        return False
-    state.output.completion = answer
-    return True
 
 
 def _is_openai(model: Model) -> bool:
@@ -257,7 +220,7 @@ def qa_agent(
                 )
                 break
 
-            if await _submit_if_called(state):
+            if await submit_if_called(state):
                 break
 
             remaining = max_output_tokens - output_tokens_used
@@ -294,9 +257,7 @@ def qa_agent(
             state.output = await model.generate(
                 input=input_messages,
                 tools=state.tools,
-                tool_choice=(
-                    ToolFunction(SUBMIT_NAME) if supports_forced_tool_choice(model_name) else "auto"
-                ),
+                tool_choice=forced_tool_choice(model_name, SUBMIT_NAME),
                 config=FULL_REASONING_HISTORY.merge(
                     GenerateConfig(
                         max_tokens=FINAL_ANSWER_MAX_TOKENS,
@@ -306,7 +267,7 @@ def qa_agent(
             )
             await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
-            await _submit_if_called(state)
+            await submit_if_called(state)
 
         return state
 

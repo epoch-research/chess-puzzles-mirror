@@ -1,16 +1,33 @@
-"""Settings for a final call that asks a model to answer now, without further reasoning.
+"""Settings for a final call that asks a model to answer now, without further reasoning."""
 
-Internally these come from each model's entry in Epoch's model config (its supported reasoning
-efforts, and whether it accepts a forced `tool_choice`). That config isn't part of this repo, so
-every model is treated the way the internal code treats a model it has no entry for.
-"""
+from inspect_ai.tool import ToolChoice, ToolFunction
+
+from bench.model.epoch.config import try_parse_epoch_model
+from bench.reasoning import REASONING_EFFORTS, ReasoningEffort
 
 
-def lowest_reasoning_effort(model_name: str) -> None:
-    """No reasoning-effort override: the forced call uses the model's default."""
-    return None
+def lowest_reasoning_effort(model_name: str) -> ReasoningEffort | None:
+    """`none` when the model supports it, otherwise its lowest reasoning effort.
+
+    `None` when the model declares no reasoning efforts or isn't an Epoch model.
+    """
+    epoch_model = try_parse_epoch_model(model_name)
+    if epoch_model is None or not epoch_model.config.thinking_settings:
+        return None
+    settings = epoch_model.config.thinking_settings
+    return next(effort for effort in REASONING_EFFORTS if effort in settings)
 
 
 def supports_forced_tool_choice(model_name: str) -> bool:
-    """Assume `submit_answer` can be forced via `tool_choice`."""
-    return True
+    """Whether a tool can be forced via `tool_choice`.
+
+    Non-Epoch models are assumed to support it; only an Epoch model that opts out via models.yaml
+    (`supports_tool_choice: false`) doesn't.
+    """
+    epoch_model = try_parse_epoch_model(model_name)
+    return epoch_model is None or epoch_model.supports_tool_choice
+
+
+def forced_tool_choice(model_name: str, tool_name: str) -> ToolChoice:
+    """Returns `ToolFunction(tool_name)` if the model supports forced tool choice, else "auto"."""
+    return ToolFunction(tool_name) if supports_forced_tool_choice(model_name) else "auto"
