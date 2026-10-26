@@ -8,13 +8,15 @@ Despite the name, this is not a live mirror: it's a snapshot of our internal (pr
 2. lightly editing a few commit messages that referenced unrelated internal work;
 3. adding a final commit that makes the code standalone (grader model resolved via Inspect model roles rather than our internal provider wrappers, plus `pyproject.toml`, `uv.lock` and this README).
 
-It was refreshed on 2026-10-14, for version 2.0.1 of the task, by repeating step 1 on the internal repo and appending the new commits, then adding a commit that makes the new code standalone (see below).
+It was refreshed on 2026-10-14, for version 2.0.1 of the task, and again on 2026-10-26 to add the Decision variant, each time by repeating step 1 on the internal repo and appending the new commits, then adding a commit that makes the new code standalone (see below).
 
 Earlier commits import internal modules that aren't included here, so only the latest commit is runnable. Some commit messages mention other internal benchmarks and tooling that aren't part of this repo.
 
 Each of the 100 samples in `bench/task/chess_puzzles/puzzles.csv` is a FEN position; the target is the best next move in `<from><to>` square notation (e.g. `d4d3`).
 
 The task, **Chess Puzzles**, is defined in `bench/task/chess_puzzles/__init__.py`, and its version history is in `bench/task/chess_puzzles/CHANGELOG.md`. Since version 2.0.0, the model runs in a loop (`bench/solver/qa_agent.py`) with a `submit_answer` tool, an output-token budget and context compaction, and the submitted move is exact-matched against the target. A response cut off at the model's output-token limit is continued; if the budget runs out first, the model is asked for an immediate answer.
+
+A second task, **Chess Puzzles (Decision)**, is for models that can't write text: the same puzzles, prompt and `submit_answer` tool, answered in one call that picks from the position's legal moves (`bench/solver/structured_answer.py`), scored by exact match. It takes optional `epochs` and `shuffle` arguments.
 
 ## Running
 
