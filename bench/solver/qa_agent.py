@@ -13,6 +13,7 @@ from inspect_ai.model import (
     ContentText,
     GenerateConfig,
     Model,
+    ModelOutput,
     compaction,
     get_model,
 )
@@ -90,6 +91,24 @@ def _summarize_oversized_reasoning(message: ChatMessageAssistant) -> int:
     return len(oversized)
 
 
+def _drop_cut_off_tool_calls(output: ModelOutput) -> None:
+    """Drop the tool calls of a response that the output token cap cut off.
+
+    Generation stopped mid-response, so a tool call in it may be truncated: OpenAI returns the
+    partial arguments (e.g. `{"answer":"b2b3`), Anthropic's SDK parses partial JSON into whatever
+    fields were complete. Executing it would take a broken or cut-short `submit_answer` as the
+    submission. Without the calls the response reads as cut off before calling a tool, so the
+    model is asked to continue (and the calls are not replayed in its history).
+    """
+    if output.stop_reason != "max_tokens" or not output.message.tool_calls:
+        return
+    transcript().info(
+        f"qa_agent: dropped {len(output.message.tool_calls)} tool call(s) from a response cut off "
+        '("stop_reason"="max_tokens") before it finished'
+    )
+    output.message.tool_calls = None
+
+
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
     """Native compaction for OpenAI; summary compaction for everyone else.
 
@@ -126,6 +145,9 @@ def qa_agent(
     On OpenAI, encrypted reasoning too long to send back (over
     `MAX_REPLAYED_ENCRYPTED_REASONING_CHARS`) is replaced in the history by its summary, as text;
     `metadata["reasoning_replaced_by_summary"]` counts those replacements.
+
+    Tool calls in a response cut off by the output token cap (`stop_reason="max_tokens"`) are
+    dropped unexecuted, since they may be truncated; the model is asked to continue instead.
 
     Args:
       max_output_tokens: Output token budget across all model turns in the loop. When exhausted, the
@@ -220,6 +242,7 @@ def qa_agent(
                 )
                 break
 
+            _drop_cut_off_tool_calls(state.output)
             if await submit_if_called(state):
                 break
 
@@ -267,6 +290,7 @@ def qa_agent(
             )
             await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
+            _drop_cut_off_tool_calls(state.output)
             await submit_if_called(state)
 
         return state
