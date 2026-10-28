@@ -5,9 +5,7 @@ from typing import TypeGuard
 
 from inspect_ai.log._transcript import transcript
 from inspect_ai.model import (
-    ChatMessage,
     ChatMessageAssistant,
-    ChatMessageTool,
     ChatMessageUser,
     CompactionNative,
     CompactionSummary,
@@ -15,17 +13,16 @@ from inspect_ai.model import (
     ContentText,
     GenerateConfig,
     Model,
+    ModelOutput,
     compaction,
-    execute_tools,
     get_model,
 )
 from inspect_ai.model._compaction.types import CompactionStrategy
 from inspect_ai.solver import Generate, Solver, TaskState, solver
-from inspect_ai.tool import Tool, ToolFunction, tool, tool_with
+from inspect_ai.tool import tool_with
 
-from bench.solver.forced_answer import lowest_reasoning_effort, supports_forced_tool_choice
-
-SUBMIT_NAME = "submit_answer"
+from bench.solver.forced_answer import forced_tool_choice, lowest_reasoning_effort
+from bench.solver.submission import SUBMIT_NAME, submit_answer, submit_if_called
 
 # Output cap for the forced final answer. The answer itself is a few tokens, but at their lowest
 # reasoning effort some models (those without `none`) still reason briefly first.
@@ -54,39 +51,6 @@ PROMPT_TEMPLATE = (
     "\n"
     "{question}"
 )
-
-
-@tool
-def submit_answer() -> Tool:
-    async def execute(answer: str) -> str:
-        """Submit your final answer. The conversation will end immediately.
-
-        Args:
-          answer: Your answer.
-        """
-        return answer
-
-    return execute
-
-
-def _extract_submission(tool_results: list[ChatMessage]) -> str | None:
-    for result in tool_results:
-        if isinstance(result, ChatMessageTool) and result.function == SUBMIT_NAME:
-            return result.text
-    return None
-
-
-async def _submit_if_called(state: TaskState) -> bool:
-    """Execute the last message's tool calls; on a submission, make it the output completion."""
-    if not state.output.message.tool_calls:
-        return False
-    tool_results, _ = await execute_tools([state.output.message], state.tools)
-    state.messages.extend(tool_results)
-    answer = _extract_submission(tool_results)
-    if answer is None:
-        return False
-    state.output.completion = answer
-    return True
 
 
 def _is_openai(model: Model) -> bool:
@@ -127,6 +91,24 @@ def _summarize_oversized_reasoning(message: ChatMessageAssistant) -> int:
     return len(oversized)
 
 
+def _drop_cut_off_tool_calls(output: ModelOutput) -> None:
+    """Drop the tool calls of a response that the output token cap cut off.
+
+    Generation stopped mid-response, so a tool call in it may be truncated: OpenAI returns the
+    partial arguments (e.g. `{"answer":"b2b3`), Anthropic's SDK parses partial JSON into whatever
+    fields were complete. Executing it would take a broken or cut-short `submit_answer` as the
+    submission. Without the calls the response reads as cut off before calling a tool, so the
+    model is asked to continue (and the calls are not replayed in its history).
+    """
+    if output.stop_reason != "max_tokens" or not output.message.tool_calls:
+        return
+    transcript().info(
+        f"qa_agent: dropped {len(output.message.tool_calls)} tool call(s) from a response cut off "
+        '("stop_reason"="max_tokens") before it finished'
+    )
+    output.message.tool_calls = None
+
+
 def _pick_compaction_strategy(model: Model, threshold: int) -> CompactionStrategy:
     """Native compaction for OpenAI; summary compaction for everyone else.
 
@@ -163,6 +145,9 @@ def qa_agent(
     On OpenAI, encrypted reasoning too long to send back (over
     `MAX_REPLAYED_ENCRYPTED_REASONING_CHARS`) is replaced in the history by its summary, as text;
     `metadata["reasoning_replaced_by_summary"]` counts those replacements.
+
+    Tool calls in a response cut off by the output token cap (`stop_reason="max_tokens"`) are
+    dropped unexecuted, since they may be truncated; the model is asked to continue instead.
 
     Args:
       max_output_tokens: Output token budget across all model turns in the loop. When exhausted, the
@@ -257,7 +242,8 @@ def qa_agent(
                 )
                 break
 
-            if await _submit_if_called(state):
+            _drop_cut_off_tool_calls(state.output)
+            if await submit_if_called(state):
                 break
 
             remaining = max_output_tokens - output_tokens_used
@@ -294,9 +280,7 @@ def qa_agent(
             state.output = await model.generate(
                 input=input_messages,
                 tools=state.tools,
-                tool_choice=(
-                    ToolFunction(SUBMIT_NAME) if supports_forced_tool_choice(model_name) else "auto"
-                ),
+                tool_choice=forced_tool_choice(model_name, SUBMIT_NAME),
                 config=FULL_REASONING_HISTORY.merge(
                     GenerateConfig(
                         max_tokens=FINAL_ANSWER_MAX_TOKENS,
@@ -306,7 +290,8 @@ def qa_agent(
             )
             await compact.record_output(input_messages, state.output)
             state.messages.append(state.output.message)
-            await _submit_if_called(state)
+            _drop_cut_off_tool_calls(state.output)
+            await submit_if_called(state)
 
         return state
 

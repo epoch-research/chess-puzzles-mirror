@@ -1,13 +1,16 @@
 from pathlib import Path
 
+import chess
 from inspect_ai import Task, task, Epochs
 from inspect_ai.dataset import csv_dataset
 from inspect_ai.scorer import exact
-from inspect_ai.solver import prompt_template
+from inspect_ai.solver import TaskState, prompt_template
 
 from bench.solver.qa_agent import qa_agent
+from bench.solver.structured_answer import exact_submission, single_choice_answer
 
 PUZZLES_FILENAME = str(Path(__file__).parent / "puzzles.csv")
+VERSION = "2.0.1"
 
 QUESTION_TEMPLATE = (
     "Below is a FEN string representing the state of a chess game. Analyze the position and "
@@ -62,7 +65,28 @@ def chess_puzzles(
         scorer=exact(),
         epochs=Epochs(epochs, reducers),
         metadata={
-            "epochai-benchmark-version": "2.0.1",
+            "epochai-benchmark-version": VERSION,
+            "inspect-log-public": True,
+        },
+    )
+
+
+def _legal_moves(state: TaskState) -> list[str]:
+    return [move.uci() for move in chess.Board(state.input_text).legal_moves]
+
+
+@task(name="Chess Puzzles (Decision)")
+def chess_puzzles_decision(*, epochs: int = 1, shuffle: bool = False) -> Task:
+    return Task(
+        dataset=csv_dataset(PUZZLES_FILENAME, auto_id=True),
+        solver=[
+            prompt_template(QUESTION_TEMPLATE),
+            single_choice_answer(_legal_moves, shuffle=shuffle, description=SUBMIT_DESCRIPTION),
+        ],
+        scorer=exact_submission(),
+        epochs=Epochs(epochs, ["mean"]),
+        metadata={
+            "epochai-benchmark-version": VERSION,
             "inspect-log-public": True,
         },
     )
