@@ -66,6 +66,7 @@ def chess_puzzles(
         epochs=Epochs(epochs, reducers),
         metadata={
             "epochai-benchmark-version": VERSION,
+            # Internally, logs are public only if the task is also in our logs allowlist
             "inspect-log-public": True,
         },
     )
@@ -87,6 +88,7 @@ def chess_puzzles_decision(*, epochs: int = 1, shuffle: bool = False) -> Task:
         epochs=Epochs(epochs, ["mean"]),
         metadata={
             "epochai-benchmark-version": VERSION,
+            # Internally, logs are public only if the task is also in our logs allowlist
             "inspect-log-public": True,
         },
     )
