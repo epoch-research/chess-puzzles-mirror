@@ -13,7 +13,8 @@ bump (see 1.1.6).
 ## 2.1.0 (unreleased)
 
 Scores are comparable with 2.0.x: no answer that scored correct in 2.0.x scores differently, and
-2.0.x logs can be re-scored with `scripts/rescore_chess_san.py` to match 2.1.0.
+2.0.x logs can be re-scored with the new scorer to match 2.1.0 (internally, with a script
+that isn't part of this repo).
 
 - The submitted move is also accepted in standard algebraic notation (SAN, e.g. `Nf3`, `exd5`,
   `O-O`, `Ng1f3`), read against the puzzle position with python-chess, and in UCI with a separator
