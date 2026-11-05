@@ -3,14 +3,14 @@ from pathlib import Path
 import chess
 from inspect_ai import Task, task, Epochs
 from inspect_ai.dataset import csv_dataset
-from inspect_ai.scorer import exact
 from inspect_ai.solver import TaskState, prompt_template
 
 from bench.solver.qa_agent import qa_agent
 from bench.solver.structured_answer import exact_submission, single_choice_answer
+from bench.task.chess_puzzles.scorer import chess_move
 
 PUZZLES_FILENAME = str(Path(__file__).parent / "puzzles.csv")
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 
 QUESTION_TEMPLATE = (
     "Below is a FEN string representing the state of a chess game. Analyze the position and "
@@ -62,7 +62,7 @@ def chess_puzzles(
     return Task(
         dataset=dataset,
         plan=plan,
-        scorer=exact(),
+        scorer=chess_move(),
         epochs=Epochs(epochs, reducers),
         metadata={
             "epochai-benchmark-version": VERSION,

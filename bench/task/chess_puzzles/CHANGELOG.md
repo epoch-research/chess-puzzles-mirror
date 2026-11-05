@@ -10,6 +10,23 @@ context window in hawkbench's defaults) are task arguments, recorded in each eva
 grader used in 1.x was hard-coded rather than a run setting, but changed once without a version
 bump (see 1.1.6).
 
+## 2.1.0 (unreleased)
+
+Scores are comparable with 2.0.x: no answer that scored correct in 2.0.x scores differently, and
+2.0.x logs can be re-scored with the new scorer to match 2.1.0 (internally, with a script
+that isn't part of this repo).
+
+- The submitted move is also accepted in standard algebraic notation (SAN, e.g. `Nf3`, `exd5`,
+  `O-O`, `Ng1f3`), read against the puzzle position with python-chess, and in UCI with a separator
+  or check mark (`e2-e4`, `g4xf3`, `e7e8=q`). SAN with a lowercase piece letter (`nf3`) is read as
+  that piece when the standard reading isn't a legal move. In 2.0.x these answers scored incorrect
+  even when they named the solution (44 of 18,029 scored 2.0.x samples, mostly from GPT-4.1,
+  GPT-4o, MiniMax-M3 and Seed 2.1 Pro). The `submit_answer` tool still asks for UCI.
+- When an answer wasn't plain UCI, its sample score records the notation in metadata
+  (`normalized_from`: `san`, `san_lowercase` or `uci_variant`) and the move it was read as
+  (`normalized_move`). The raw answer stays the score's `answer`. The scorer keeps the name
+  `exact`.
+
 ## 2.0.1 (2026-10-14)
 
 - On OpenAI, a response cut off with encrypted reasoning too long to send back (over 1,048,576
@@ -97,6 +114,11 @@ Scores are not comparable with 1.x.
 ## Chess Puzzles (Decision)
 
 Shares its version number with Chess Puzzles.
+
+### 2.1.0
+
+- No change to the task. Its moves are offered and scored in UCI, so the SAN scoring in Chess
+  Puzzles 2.1.0 doesn't apply.
 
 ### 2.0.1
 
